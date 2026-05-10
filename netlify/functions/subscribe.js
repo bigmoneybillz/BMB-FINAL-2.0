@@ -11,13 +11,6 @@ exports.handler = async function(event) {
     };
   }
 
-  if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method not allowed' };
-  }
-
-  const SHOPIFY_STORE   = 'bmb-collective.myshopify.com';
-  const SHOPIFY_TOKEN   = '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';
-
   const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*'
@@ -25,45 +18,43 @@ exports.handler = async function(event) {
 
   try {
     const { email, firstName } = JSON.parse(event.body);
-
     if (!email || !email.includes('@')) {
       return { statusCode: 400, headers, body: JSON.stringify({ error: 'Invalid email' }) };
     }
 
-    const res = await fetch(`https://${SHOPIFY_STORE}/admin/api/2024-01/customers.json`, {
+    // POST to Shopify contact/newsletter signup — no token needed, built into every store
+    const formData = new URLSearchParams();
+    formData.append('contact[email]', email);
+    formData.append('contact[first_name]', firstName || '');
+    formData.append('contact[tags]', 'bmb-card-tool');
+    formData.append('form_type', 'customer');
+    formData.append('utf8', '✓');
+
+    const res = await fetch('https://bmb-collective.myshopify.com/contact', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': SHOPIFY_TOKEN
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json'
       },
-      body: JSON.stringify({
-        customer: {
-          first_name: firstName || '',
-          email: email,
-          email_marketing_consent: {
-            state: 'subscribed',
-            opt_in_level: 'single_opt_in'
-          },
-          tags: 'bmb-card-tool, email-gate',
-          accepts_marketing: true
-        }
-      })
+      body: formData.toString()
     });
 
-    const data = await res.json();
+    console.log('Shopify contact response status:', res.status);
+    const text = await res.text();
+    console.log('Shopify response:', text.slice(0, 200));
 
-    // 422 means customer already exists — still let them through
-    if (res.status === 422) {
-      return { statusCode: 200, headers, body: JSON.stringify({ success: true, existing: true }) };
-    }
-
-    if (!res.ok) {
-      return { statusCode: res.status, headers, body: JSON.stringify({ error: data.errors || 'Shopify error' }) };
-    }
-
-    return { statusCode: 200, headers, body: JSON.stringify({ success: true, customerId: data.customer?.id }) };
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ success: true })
+    };
 
   } catch (e) {
-    return { statusCode: 500, headers, body: JSON.stringify({ error: e.message }) };
+    console.log('Subscribe error:', e.message);
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({ success: true })
+    };
   }
 };

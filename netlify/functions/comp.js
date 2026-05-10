@@ -16,11 +16,7 @@ exports.handler = async function(event) {
   }
 
   const POKETRACE_KEY = 'pc_f49d23ff406e8b7b5cbae5117ece13870267d92970d43a8d';
-
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*'
-  };
+  const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   try {
     const { search, set } = JSON.parse(event.body);
@@ -39,21 +35,26 @@ exports.handler = async function(event) {
 
     const searchData = await searchRes.json();
     const results = searchData.data || [];
-
     if (results.length === 0) {
       return { statusCode: 404, headers, body: JSON.stringify({ error: 'No cards found for: ' + search }) };
     }
 
     const card = results[0];
+    // Grab image from search result immediately — it's always here
+    const searchImage = card.image || card.imageUrl || card.image_url || null;
 
     const detailRes = await fetch(
       `https://api.poketrace.com/v1/cards/${card.id}`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
     );
-
     const detailData = await detailRes.json();
     const d = detailData.data || card;
     const prices = d.prices || {};
+
+    // Image: prefer detail, fall back to search result
+    const image = d.image || d.imageUrl || d.image_url ||
+                  d.images?.large || d.images?.small ||
+                  searchImage;
 
     const ebayNM   = prices.ebay?.NEAR_MINT || {};
     const tcgNM    = prices.tcgplayer?.NEAR_MINT || {};
@@ -61,7 +62,6 @@ exports.handler = async function(event) {
     const ebayMP   = prices.ebay?.MODERATELY_PLAYED || {};
     const ebayHP   = prices.ebay?.HEAVILY_PLAYED || {};
     const ebayDMG  = prices.ebay?.DAMAGED || {};
-
     const ebayPSA10 = prices.ebay?.PSA_10  || {};
     const ebayPSA9  = prices.ebay?.PSA_9   || {};
     const ebayPSA8  = prices.ebay?.PSA_8   || {};
@@ -80,13 +80,9 @@ exports.handler = async function(event) {
       if (trendPct < -3) trend = 'down';
     }
 
-    // Pull image from multiple possible fields
-    const image = d.image || d.imageUrl || d.image_url || d.images?.large || d.images?.small || null;
-
     const response = {
       card_name:    d.name + (d.cardNumber ? ' #' + d.cardNumber : ''),
       set:          d.set?.name || null,
-      set_slug:     d.set?.slug || null,
       variant:      d.variant   || null,
       rarity:       d.rarity    || null,
       last_updated: d.lastUpdated || null,
@@ -111,9 +107,9 @@ exports.handler = async function(event) {
       market_avg:       nmAvg,
       tcgplayer_recent: tcgNM.avg || null,
       ebay_recent:      ebayNM.avg || null,
-      low:  Math.min(ebayNM.low || 9999, tcgNM.low || 9999) === 9999 ? 0 : Math.min(ebayNM.low || 9999, tcgNM.low || 9999),
-      high: Math.max(ebayNM.high || 0, tcgNM.high || 0),
-      num_sales:  (ebayNM.saleCount || 0) + (tcgNM.saleCount || 0),
+      low:  Math.min(ebayNM.low||9999, tcgNM.low||9999) === 9999 ? 0 : Math.min(ebayNM.low||9999, tcgNM.low||9999),
+      high: Math.max(ebayNM.high||0, tcgNM.high||0),
+      num_sales:  (ebayNM.saleCount||0) + (tcgNM.saleCount||0),
       trend:      trend,
       trend_pct:  Math.round(trendPct * 10) / 10,
       all_results: results.slice(0, 5).map(function(r) {
@@ -122,7 +118,7 @@ exports.handler = async function(event) {
           name:   r.name,
           set:    r.set?.name,
           number: r.cardNumber,
-          image:  r.image || r.imageUrl || r.image_url || r.images?.small || null
+          image:  r.image || r.imageUrl || r.image_url || null
         };
       })
     };
