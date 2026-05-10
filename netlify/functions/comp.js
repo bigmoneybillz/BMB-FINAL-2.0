@@ -26,6 +26,11 @@ exports.handler = async function(event) {
     if (results.length === 0) return { statusCode: 404, headers, body: JSON.stringify({ error: 'No cards found for: ' + search }) };
 
     const card = results[0];
+
+    // Image comes on the search result — grab it here before calling detail
+    // PokeTrace search response includes image field per their docs
+    const image = card.image || null;
+
     const detailRes = await fetch(
       `https://api.poketrace.com/v1/cards/${card.id}`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
@@ -60,6 +65,7 @@ exports.handler = async function(event) {
         card_name: d.name + (d.cardNumber ? ' #' + d.cardNumber : ''),
         set: d.set?.name || null, variant: d.variant || null, rarity: d.rarity || null,
         last_updated: d.lastUpdated || null, has_graded: d.hasGraded || false,
+        image: image,
         raw: { near_mint: { ebay: ebayNM, tcgplayer: tcgNM }, lightly_played: { ebay: ebayLP }, moderately_played: { ebay: ebayMP }, heavily_played: { ebay: ebayHP }, damaged: { ebay: ebayDMG } },
         graded: { psa_10: ebayPSA10, psa_9: ebayPSA9, psa_8: ebayPSA8, bgs_9_5: ebayBGS95, bgs_9: ebayBGS9, cgc_10: ebayCGC10, cgc_9_5: ebayCGC95 },
         market_avg: nmAvg, tcgplayer_recent: tcgNM.avg || null, ebay_recent: ebayNM.avg || null,
@@ -67,7 +73,7 @@ exports.handler = async function(event) {
         high: Math.max(ebayNM.high||0, tcgNM.high||0),
         num_sales: (ebayNM.saleCount||0) + (tcgNM.saleCount||0),
         trend: trend, trend_pct: Math.round(trendPct * 10) / 10,
-        all_results: results.slice(0, 5).map(r => ({ id: r.id, name: r.name, set: r.set?.name, number: r.cardNumber }))
+        all_results: results.slice(0, 5).map(r => ({ id: r.id, name: r.name, set: r.set?.name, number: r.cardNumber, image: r.image || null }))
       })
     };
 
