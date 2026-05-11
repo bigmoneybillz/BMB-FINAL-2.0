@@ -9,7 +9,7 @@ exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
 
   const POKETRACE_KEY  = 'pc_f49d23ff406e8b7b5cbae5117ece13870267d92970d43a8d';
-  const POKEWALLET_KEY = 'pk_live_84e8836ef168b61235bce609e28937157750ccee44cd6863';
+  const POKEWALLET_KEY = process.env.POKEWALLET_API_KEY;
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   try {
