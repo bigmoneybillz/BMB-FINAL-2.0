@@ -18,7 +18,7 @@ exports.handler = async function(event) {
 
     const query = encodeURIComponent(search + (set ? ' ' + set : ''));
 
-    // PokeTrace search first
+    // PokeTrace search
     const ptRes = await fetch(
       `https://api.poketrace.com/v1/cards?search=${query}&market=US&limit=5&product_type=single`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
@@ -29,40 +29,63 @@ exports.handler = async function(event) {
 
     const card = results[0];
     const tcgplayerId = card.refs?.tcgplayerId || null;
+    const cardName = card.name || search;
+    const setName = card.set?.name || set || '';
 
-    // PokeTrace detail + PokeWallet image search in parallel
-    // Use TCGPlayer ID for exact match, fall back to name search
-    const pwQuery = tcgplayerId ? encodeURIComponent(card.name) : query;
+    // Search PokeWallet with card name + set for better matching
+    // Also include TCGPlayer product ID in query for exact match
+    const pwQueryStr = tcgplayerId
+      ? `${cardName} ${setName}`.trim()
+      : `${search} ${setName}`.trim();
+
     const [detailRes, pwRes] = await Promise.all([
       fetch(`https://api.poketrace.com/v1/cards/${card.id}`, { headers: { 'X-API-Key': POKETRACE_KEY } }),
-      fetch(`https://api.pokewallet.io/search?q=${pwQuery}&limit=5`, { headers: { 'X-API-Key': POKEWALLET_KEY } })
+      fetch(`https://api.pokewallet.io/search?q=${encodeURIComponent(pwQueryStr)}&limit=10`, { headers: { 'X-API-Key': POKEWALLET_KEY } })
     ]);
 
     const detailData = await detailRes.json();
     const d = detailData.data || card;
     const prices = d.prices || {};
 
-    // Find best matching PokeWallet card
+    // Find best PokeWallet match — prefer English cards with TCGPlayer data
     let pokewallet_id = null;
     try {
       const pwData = await pwRes.json();
       const pwResults = pwData.results || [];
-      // Try to match by TCGPlayer ID first
+
+      // First try: match by TCGPlayer product ID in URL
       let matched = null;
       if (tcgplayerId) {
         matched = pwResults.find(function(r) {
-          return r.tcgplayer?.url && r.tcgplayer.url.includes(tcgplayerId);
+          return r.tcgplayer?.url && r.tcgplayer.url.includes('/' + tcgplayerId);
         });
       }
-      // Fall back to first result
+
+      // Second try: find English card with TCGPlayer data (not Japanese sets)
+      if (!matched) {
+        matched = pwResults.find(function(r) {
+          var setCode = r.card_info?.set_code || '';
+          // Skip Japanese sets (start with S, SV, etc with Japanese naming)
+          var isJapanese = /^S\d+[a-z]*$/.test(setCode) || setCode.startsWith('SCF') || setCode.startsWith('SMP');
+          return r.tcgplayer && !isJapanese;
+        });
+      }
+
+      // Third try: first result with TCGPlayer data
+      if (!matched) {
+        matched = pwResults.find(function(r) { return r.tcgplayer; });
+      }
+
+      // Last resort: first result
       if (!matched) matched = pwResults[0];
+
       if (matched?.id) pokewallet_id = matched.id;
     } catch(e) {}
 
     const ebayNM   = prices.ebay?.NEAR_MINT || {};
     const tcgNM    = prices.tcgplayer?.NEAR_MINT || {};
     const ebayLP   = prices.ebay?.LIGHTLY_PLAYED || {};
-    const ebayMP   = prices.ebay?.MODERATELY_PLAYED || {};
+    const ebayMP   = prices.ebay?.MODERATELY_PLACED || {};
     const ebayHP   = prices.ebay?.HEAVILY_PLAYED || {};
     const ebayDMG  = prices.ebay?.DAMAGED || {};
     const ebayPSA10 = prices.ebay?.PSA_10  || {};
