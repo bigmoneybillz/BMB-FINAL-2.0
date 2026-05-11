@@ -18,7 +18,7 @@ exports.handler = async function(event) {
 
     const query = encodeURIComponent(search + (set ? ' ' + set : ''));
 
-    // Run PokeTrace search + PokeWallet image search in parallel
+    // Run PokeTrace + PokeWallet in parallel
     const [ptRes, pwRes] = await Promise.all([
       fetch(
         `https://api.poketrace.com/v1/cards?search=${query}&market=US&limit=5&product_type=single`,
@@ -36,28 +36,15 @@ exports.handler = async function(event) {
 
     const card = results[0];
 
-    // Get PokeWallet card ID for image
-    let imageUrl = null;
+    // Just get the PokeWallet card ID — browser will fetch image directly
+    let pokewallet_id = null;
     try {
       const pwData = await pwRes.json();
       const pwCard = (pwData.results || [])[0];
-      if (pwCard?.id) {
-        // Fetch image using the card ID
-        const imgRes = await fetch(
-          `https://api.pokewallet.io/images/${pwCard.id}?size=high`,
-          { headers: { 'X-API-Key': POKEWALLET_KEY } }
-        );
-        if (imgRes.ok) {
-          // Convert binary image to base64 data URL
-          const buf = await imgRes.arrayBuffer();
-          const b64 = Buffer.from(buf).toString('base64');
-          const ct  = imgRes.headers.get('content-type') || 'image/jpeg';
-          imageUrl  = `data:${ct};base64,${b64}`;
-        }
-      }
-    } catch(e) { /* image optional */ }
+      if (pwCard?.id) pokewallet_id = pwCard.id;
+    } catch(e) {}
 
-    // Get PokeTrace detail
+    // PokeTrace detail
     const detailRes = await fetch(
       `https://api.poketrace.com/v1/cards/${card.id}`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
@@ -92,7 +79,7 @@ exports.handler = async function(event) {
         card_name: d.name + (d.cardNumber ? ' #' + d.cardNumber : ''),
         set: d.set?.name || null, variant: d.variant || null, rarity: d.rarity || null,
         last_updated: d.lastUpdated || null, has_graded: d.hasGraded || false,
-        image: imageUrl,
+        pokewallet_id: pokewallet_id,
         raw: { near_mint: { ebay: ebayNM, tcgplayer: tcgNM }, lightly_played: { ebay: ebayLP }, moderately_played: { ebay: ebayMP }, heavily_played: { ebay: ebayHP }, damaged: { ebay: ebayDMG } },
         graded: { psa_10: ebayPSA10, psa_9: ebayPSA9, psa_8: ebayPSA8, bgs_9_5: ebayBGS95, bgs_9: ebayBGS9, cgc_10: ebayCGC10, cgc_9_5: ebayCGC95 },
         market_avg: nmAvg, tcgplayer_recent: tcgNM.avg || null, ebay_recent: ebayNM.avg || null,
