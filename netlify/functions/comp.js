@@ -18,40 +18,46 @@ exports.handler = async function(event) {
 
     const query = encodeURIComponent(search + (set ? ' ' + set : ''));
 
-    // Run PokeTrace + PokeWallet in parallel
-    const [ptRes, pwRes] = await Promise.all([
-      fetch(
-        `https://api.poketrace.com/v1/cards?search=${query}&market=US&limit=5&product_type=single`,
-        { headers: { 'X-API-Key': POKETRACE_KEY } }
-      ),
-      fetch(
-        `https://api.pokewallet.io/search?q=${query}&limit=1`,
-        { headers: { 'X-API-Key': POKEWALLET_KEY } }
-      )
-    ]);
-
+    // PokeTrace search first
+    const ptRes = await fetch(
+      `https://api.poketrace.com/v1/cards?search=${query}&market=US&limit=5&product_type=single`,
+      { headers: { 'X-API-Key': POKETRACE_KEY } }
+    );
     const searchData = await ptRes.json();
     const results = searchData.data || [];
     if (results.length === 0) return { statusCode: 404, headers, body: JSON.stringify({ error: 'No cards found for: ' + search }) };
 
     const card = results[0];
+    const tcgplayerId = card.refs?.tcgplayerId || null;
 
-    // Just get the PokeWallet card ID — browser will fetch image directly
-    let pokewallet_id = null;
-    try {
-      const pwData = await pwRes.json();
-      const pwCard = (pwData.results || [])[0];
-      if (pwCard?.id) pokewallet_id = pwCard.id;
-    } catch(e) {}
+    // PokeTrace detail + PokeWallet image search in parallel
+    // Use TCGPlayer ID for exact match, fall back to name search
+    const pwQuery = tcgplayerId ? encodeURIComponent(card.name) : query;
+    const [detailRes, pwRes] = await Promise.all([
+      fetch(`https://api.poketrace.com/v1/cards/${card.id}`, { headers: { 'X-API-Key': POKETRACE_KEY } }),
+      fetch(`https://api.pokewallet.io/search?q=${pwQuery}&limit=5`, { headers: { 'X-API-Key': POKEWALLET_KEY } })
+    ]);
 
-    // PokeTrace detail
-    const detailRes = await fetch(
-      `https://api.poketrace.com/v1/cards/${card.id}`,
-      { headers: { 'X-API-Key': POKETRACE_KEY } }
-    );
     const detailData = await detailRes.json();
     const d = detailData.data || card;
     const prices = d.prices || {};
+
+    // Find best matching PokeWallet card
+    let pokewallet_id = null;
+    try {
+      const pwData = await pwRes.json();
+      const pwResults = pwData.results || [];
+      // Try to match by TCGPlayer ID first
+      let matched = null;
+      if (tcgplayerId) {
+        matched = pwResults.find(function(r) {
+          return r.tcgplayer?.url && r.tcgplayer.url.includes(tcgplayerId);
+        });
+      }
+      // Fall back to first result
+      if (!matched) matched = pwResults[0];
+      if (matched?.id) pokewallet_id = matched.id;
+    } catch(e) {}
 
     const ebayNM   = prices.ebay?.NEAR_MINT || {};
     const tcgNM    = prices.tcgplayer?.NEAR_MINT || {};
