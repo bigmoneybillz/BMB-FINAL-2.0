@@ -11,6 +11,81 @@ exports.handler = async function(event) {
   const POKETRACE_KEY = 'pc_f49d23ff406e8b7b5cbae5117ece13870267d92970d43a8d';
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
+  // Complete map of PokeTrace set slugs to Scrydex set codes
+  const SET_MAP = {
+    // Base Era
+    'base-set': 'BASE', 'jungle': 'JUN', 'fossil': 'FOS', 'base-set-2': 'B2',
+    'team-rocket': 'TR', 'gym-heroes': 'GH', 'gym-challenge': 'GC',
+    // Neo Era
+    'neo-genesis': 'NG', 'neo-discovery': 'ND', 'neo-revelation': 'NR', 'neo-destiny': 'NDE',
+    // E-Card Era
+    'legendary-collection': 'LC', 'expedition': 'EXP', 'aquapolis': 'AQ', 'skyridge': 'SK',
+    // EX Era
+    'ruby-sapphire': 'RS', 'sandstorm': 'SS', 'dragon': 'DR',
+    'team-magma-vs-team-aqua': 'MA', 'hidden-legends': 'HL',
+    'firered-leafgreen': 'FL', 'team-rocket-returns': 'TRR',
+    'deoxys': 'DX', 'emerald': 'EM', 'unseen-forces': 'UF',
+    'delta-species': 'DS', 'legend-maker': 'LM', 'holon-phantoms': 'HP',
+    'crystal-guardians': 'CG', 'dragon-frontiers': 'DF', 'power-keepers': 'PK',
+    // Diamond & Pearl Era
+    'diamond-pearl': 'DP', 'mysterious-treasures': 'MT', 'secret-wonders': 'SW',
+    'great-encounters': 'GE', 'majestic-dawn': 'MD', 'legends-awakened': 'LA',
+    'stormfront': 'SF',
+    // Platinum Era
+    'platinum': 'PL', 'rising-rivals': 'RR', 'supreme-victors': 'SV2', 'arceus': 'AR',
+    // HGSS Era
+    'heartgold-soulsilver': 'HS', 'unleashed': 'UL', 'undaunted': 'UN',
+    'triumphant': 'TM', 'call-of-legends': 'CL',
+    // Black & White Era
+    'black-white': 'BW', 'emerging-powers': 'EPO', 'noble-victories': 'NVI',
+    'next-destinies': 'NXD', 'dark-explorers': 'DEX', 'dragons-exalted': 'DRX',
+    'dragon-vault': 'DRV', 'boundaries-crossed': 'BCR', 'plasma-storm': 'PLS',
+    'plasma-freeze': 'PLF', 'plasma-blast': 'PLB', 'legendary-treasures': 'LTR',
+    // XY Era
+    'xy': 'XY', 'flashfire': 'FLF', 'furious-fists': 'FFI', 'phantom-forces': 'PHF',
+    'primal-clash': 'PRC', 'double-crisis': 'DCR', 'roaring-skies': 'ROS',
+    'ancient-origins': 'AOR', 'breakthrough': 'BKT', 'breakpoint': 'BKP',
+    'generations': 'GEN', 'fates-collide': 'FCO', 'steam-siege': 'STS',
+    'evolutions': 'EVO',
+    // Sun & Moon Era
+    'sun-moon': 'SUM', 'guardians-rising': 'GRI', 'burning-shadows': 'BUS',
+    'shining-legends': 'SLG', 'crimson-invasion': 'CIN', 'ultra-prism': 'UPR',
+    'forbidden-light': 'FLI', 'celestial-storm': 'CES', 'dragon-majesty': 'DRM',
+    'lost-thunder': 'LOT', 'team-up': 'TEU', 'detective-pikachu': 'DET',
+    'unbroken-bonds': 'UNB', 'unified-minds': 'UNM', 'hidden-fates': 'HIF',
+    'cosmic-eclipse': 'CEC',
+    // Sword & Shield Era
+    'sword-shield': 'SSH', 'rebel-clash': 'RCL', 'darkness-ablaze': 'DAA',
+    'champions-path': 'CPA', 'vivid-voltage': 'VIV', 'shining-fates': 'SHF',
+    'battle-styles': 'BST', 'chilling-reign': 'CRE', 'evolving-skies': 'EVS',
+    'celebrations': 'CEL', 'fusion-strike': 'FST', 'brilliant-stars': 'BRS',
+    'astral-radiance': 'ASR', 'pokemon-go': 'PGO', 'lost-origin': 'LOR',
+    'silver-tempest': 'SIT', 'crown-zenith': 'CRZ',
+    // Scarlet & Violet Era
+    'scarlet-violet': 'SVI', 'paldea-evolved': 'PAL', 'obsidian-flames': 'OBF',
+    '151': 'MEW', 'paradox-rift': 'PAR', 'paldean-fates': 'PAF',
+    'temporal-forces': 'TEF', 'twilight-masquerade': 'TWM', 'shrouded-fable': 'SFA',
+    'stellar-crown': 'SCR', 'surging-sparks': 'SSP', 'prismatic-evolutions': 'PRE',
+    // 2025 Sets
+    'journey-together': 'JTG', 'destined-rivals': 'DRI',
+    'black-bolt': 'BLK', 'white-flare': 'WHT',
+    'mega-evolution': 'MEG', 'phantasmal-flames': 'PHF2',
+    // 2026 Mega Evolution Series
+    'ascended-heroes': 'ASH', 'perfect-order': 'PEO',
+    'chaos-rising': 'CRI', 'pitch-black': 'PTB',
+    'abyss-eye': 'ABE',
+  };
+
+  function buildImageUrl(setSlug, cardNumber) {
+    if (!setSlug || !cardNumber) return null;
+    const setCode = SET_MAP[setSlug];
+    if (!setCode) return null;
+    const num = cardNumber.split('/')[0].replace(/\D/g, '').replace(/^0+/, '');
+    if (!num) return null;
+    const paddedNum = num.padStart(3, '0');
+    return `https://scrydex.com/img/sets/${setCode}/${paddedNum}.jpg`;
+  }
+
   try {
     const { search, set } = JSON.parse(event.body);
     if (!search) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing search term' }) };
@@ -20,17 +95,11 @@ exports.handler = async function(event) {
       `https://api.poketrace.com/v1/cards?search=${query}&market=US&limit=5&product_type=single`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
     );
-
     const searchData = await searchRes.json();
     const results = searchData.data || [];
     if (results.length === 0) return { statusCode: 404, headers, body: JSON.stringify({ error: 'No cards found for: ' + search }) };
 
     const card = results[0];
-
-    // Image comes on the search result — grab it here before calling detail
-    // PokeTrace search response includes image field per their docs
-    const image = card.image || null;
-
     const detailRes = await fetch(
       `https://api.poketrace.com/v1/cards/${card.id}`,
       { headers: { 'X-API-Key': POKETRACE_KEY } }
@@ -38,6 +107,8 @@ exports.handler = async function(event) {
     const detailData = await detailRes.json();
     const d = detailData.data || card;
     const prices = d.prices || {};
+
+    const image = buildImageUrl(d.set?.slug || card.set?.slug, d.cardNumber || card.cardNumber);
 
     const ebayNM   = prices.ebay?.NEAR_MINT || {};
     const tcgNM    = prices.tcgplayer?.NEAR_MINT || {};
@@ -73,7 +144,10 @@ exports.handler = async function(event) {
         high: Math.max(ebayNM.high||0, tcgNM.high||0),
         num_sales: (ebayNM.saleCount||0) + (tcgNM.saleCount||0),
         trend: trend, trend_pct: Math.round(trendPct * 10) / 10,
-        all_results: results.slice(0, 5).map(r => ({ id: r.id, name: r.name, set: r.set?.name, number: r.cardNumber, image: r.image || null }))
+        all_results: results.slice(0, 5).map(r => ({
+          id: r.id, name: r.name, set: r.set?.name, number: r.cardNumber,
+          image: buildImageUrl(r.set?.slug, r.cardNumber)
+        }))
       })
     };
 
