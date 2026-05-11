@@ -177,9 +177,32 @@ select option{background:#1a1028;}
         </select>
       </div>
     </div>
-    <div id="c-slab-info" style="display:none;background:rgba(124,58,237,.12);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:12px;color:var(--purple3);margin-bottom:10px;">
-      <i class="ti ti-info-circle" style="font-size:14px;margin-right:5px;vertical-align:-2px;"></i>
-      Searches eBay sold data for all PSA, BGS &amp; CGC grades. Click any grade to go straight to Sell.
+    <!-- Card number - raw only -->
+    <div class="fld" id="c-numwrap">
+      <label>Card number *</label>
+      <input id="c-num" type="text" placeholder="e.g. 191" onkeydown="if(event.key==='Enter')doComp()">
+      <p class="hint">Number only — no # symbol</p>
+    </div>
+    <!-- Slab company + grade selectors -->
+    <div id="c-slabwrap" style="display:none;">
+      <div class="grid2">
+        <div class="fld">
+          <label>Grading company</label>
+          <select id="c-company" onchange="updateGrades()">
+            <option value="PSA">PSA</option>
+            <option value="BGS">BGS</option>
+            <option value="CGC">CGC</option>
+          </select>
+        </div>
+        <div class="fld">
+          <label>Grade</label>
+          <select id="c-grade">
+            <option>10</option><option>9</option><option>8</option><option>7</option>
+            <option>6</option><option>5</option><option>4</option><option>3</option>
+            <option>2</option><option>1</option>
+          </select>
+        </div>
+      </div>
     </div>
     <button class="pbtn" id="c-btn" onclick="doComp()"><i class="ti ti-search" style="font-size:16px;"></i> Comp This Card</button>
     <div id="c-err" class="errbx" style="display:none;"></div>
@@ -267,9 +290,25 @@ function setCompType(t){
   COMP_TYPE = t;
   E('c-raw').className  = t==='raw'  ? 'on' : '';
   E('c-slab').className = t==='slab' ? 'on' : '';
-  E('c-condwrap').style.display   = t==='raw'  ? '' : 'none';
-  E('c-slab-info').style.display  = t==='slab' ? 'block' : 'none';
+  E('c-condwrap').style.display  = t==='raw'  ? '' : 'none';
+  E('c-numwrap').style.display   = t==='raw'  ? '' : 'none';
+  E('c-slabwrap').style.display  = t==='slab' ? '' : 'none';
   H('c-result'); H('c-err');
+}
+
+function updateGrades(){
+  var company = E('c-company').value;
+  var sel = E('c-grade');
+  var grades;
+  if(company === 'BGS'){
+    grades = ['10 Pristine','9.5 Gem Mint','9','8.5','8','7.5','7','6.5','6','5.5','5','4.5','4','3.5','3','2.5','2','1.5','1'];
+  } else if(company === 'CGC'){
+    grades = ['10 Pristine Gold','10','9.5','9','8.5','8','7.5','7','6.5','6','5.5','5','4.5','4','3.5','3','2.5','2','1.5','1'];
+  } else {
+    // PSA
+    grades = ['10','9','8','7','6','5','4','3','2','1'];
+  }
+  sel.innerHTML = grades.map(function(g){return'<option>'+g+'</option>';}).join('');
 }
 
 function setSellType(t){
@@ -311,13 +350,18 @@ function doComp(){
   var name=E('c-name').value.trim();
   if(!name){alert('Please enter a card name.');return;}
   var set=E('c-set').value.trim();
+  var num=COMP_TYPE==='raw'?E('c-num').value.trim():'';
+  var company=COMP_TYPE==='slab'?E('c-company').value:'';
+  var grade=COMP_TYPE==='slab'?E('c-grade').value:'';
   var cond=COMP_TYPE==='raw'?E('c-cond').value:'NEAR_MINT';
+  // Validate card number for raw
+  if(COMP_TYPE==='raw' && !num){alert('Please enter the card number.');return;}
   var btn=E('c-btn');
   btn.disabled=true;
   btn.innerHTML='<i class="ti ti-loader spin" style="font-size:16px;"></i> Fetching live data...';
   H('c-err');H('c-result');S('b-loading');
 
-  fetch(NETLIFY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({search:name,set:set})})
+  fetch(NETLIFY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({search:name,set:set,num:num,company:company,grade:grade})})
   .then(function(r){return r.json();})
   .then(function(d){
     H('b-loading');
@@ -410,7 +454,19 @@ function renderSlab(d){
 
   if(d.pokewallet_id){ h+='</div></div>'; }
 
-  if(d.market_avg){
+  // Show specific grade prominently if searched for
+  if(d.specific_slab && d.specific_slab.data && d.specific_slab.data.avg){
+    var sd = d.specific_slab;
+    var gc = sd.grade.startsWith('PSA')?'#f87171':sd.grade.startsWith('BGS')?'#60a5fa':'#c084fc';
+    h+='<div style="background:linear-gradient(145deg,#1a0d3d,#0d0a14);border:1px solid '+gc+'44;border-radius:14px;padding:16px;margin:1rem 0;text-align:center;">';
+    h+='<div style="font-size:11px;font-weight:700;color:'+gc+';text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;">'+sd.grade+' Market Price</div>';
+    h+='<div style="font-size:40px;font-weight:800;color:#e9d5ff;margin-bottom:4px;">$'+fmt(sd.data.avg)+'</div>';
+    if(sd.data.low&&sd.data.high)h+='<div style="font-size:12px;color:var(--muted);">Range: $'+fmt(sd.data.low)+' – $'+fmt(sd.data.high)+'</div>';
+    if(sd.data.saleCount)h+='<div style="font-size:11px;color:var(--dim);margin-top:3px;">'+sd.data.saleCount+' eBay sold</div>';
+    h+='<button class="sell-btn" style="margin-top:12px;" onclick="go('sell',{name:''+sn+'',price:'+sd.data.avg+',isSlab:true,grade:''+sd.grade+''})"><i class="ti ti-coins" style="font-size:16px;"></i> Sell This '+sd.grade+' — $'+fmt(sd.data.avg)+'</button>';
+    h+='</div>';
+    h+='<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">All available grades:</div>';
+  } else if(d.market_avg){
     h+='<div class="note" style="margin-top:1rem;"><i class="ti ti-cards" style="font-size:13px;margin-right:5px;vertical-align:-2px;"></i><strong>Raw NM baseline:</strong> $'+fmt(d.market_avg)+' — graded prices below</div>';
   }
 

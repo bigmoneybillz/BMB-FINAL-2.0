@@ -13,10 +13,12 @@ exports.handler = async function(event) {
   const headers = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
 
   try {
-    const { search, set } = JSON.parse(event.body);
+    const { search, set, num, company, grade } = JSON.parse(event.body);
     if (!search) return { statusCode: 400, headers, body: JSON.stringify({ error: 'Missing search term' }) };
 
-    const query = encodeURIComponent(search + (set ? ' ' + set : ''));
+    // Build search query — include card number for precision
+    const searchStr = [search, set, num].filter(Boolean).join(' ');
+    const query = encodeURIComponent(searchStr);
 
     // PokeTrace search
     const ptRes = await fetch(
@@ -101,6 +103,17 @@ exports.handler = async function(event) {
     const avg7  = ebayNM.avg7d  || tcgNM.avg7d  || nmAvg;
     let trend = 'stable', trendPct = 0;
     if (avg30 > 0) { trendPct = ((avg7 - avg30) / avg30 * 100); if (trendPct > 3) trend = 'up'; if (trendPct < -3) trend = 'down'; }
+
+    // Build specific slab grade key if company+grade provided
+    let specificSlabPrice = null;
+    if (company && grade) {
+      const gradeNum = grade.split(' ')[0]; // handle "9.5 Gem Mint" -> "9.5"
+      let key = null;
+      if (company === 'PSA') key = 'PSA_' + gradeNum.replace('.', '_');
+      else if (company === 'BGS') key = 'BGS_' + gradeNum.replace('.', '_');
+      else if (company === 'CGC') key = 'CGC_' + gradeNum.replace('.', '_');
+      if (key && prices.ebay?.[key]) specificSlabPrice = { grade: company + ' ' + gradeNum, data: prices.ebay[key] };
+    }
 
     return {
       statusCode: 200, headers,
